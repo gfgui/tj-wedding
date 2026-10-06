@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedOrigins": ["https://TROCAR-PELO-DOMINIO-DO-SITE"],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["content-type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]

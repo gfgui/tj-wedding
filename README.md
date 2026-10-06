@@ -79,28 +79,98 @@ A festa dura um dia. Não há senha nem login: o nome digitado vira um `Guest` e
 cookie identifica a pessoa até o fim do evento. O `/admin` é a única área com
 senha, lida de `ADMIN_PASSWORD` e comparada em tempo constante.
 
-## Ir para produção (Cloudflare R2)
+## Deploy
 
-A camada de storage fala S3, então só mudam as variáveis de ambiente:
+Pilha recomendada: **Vercel** (Next, HTTPS automático — é o que faz a câmera
+funcionar) + **Neon** (Postgres gerenciado) + **Cloudflare R2** (storage). Os
+três têm tier gratuito suficiente para um evento de um dia.
+
+Nenhuma linha de código muda entre local e produção: a camada de storage fala
+S3 puro e tudo o que varia são variáveis de ambiente.
+
+### 1. Banco no Neon
+
+Crie o projeto e copie a connection string **pooled** — a que tem `-pooler` no
+host. Em serverless cada invocação abre uma conexão nova; com a string direta o
+Postgres começa a recusar conexões assim que os convidados chegarem juntos.
+
+> Se aparecer erro de *prepared statement* nos logs, acrescente
+> `?pgbouncer=true` ao final da URL.
+
+### 2. Bucket no R2
+
+1. Crie o bucket (ex.: `casamento-fotos`).
+2. Habilite acesso público — subdomínio `r2.dev` ou um domínio seu. É o valor de
+   `NEXT_PUBLIC_MEDIA_URL`. Bucket do R2 nasce privado: sem esse passo as fotos
+   sobem mas a galeria mostra quadrados quebrados.
+3. Aplique a política de CORS de [`deploy/r2-cors.json`](deploy/r2-cors.json),
+   trocando o domínio. **Sem isso nenhum upload funciona** — veja
+   [`deploy/README.md`](deploy/README.md).
+4. Gere um token de API com leitura e escrita no bucket.
+
+### 3. Vercel
+
+Importe o repositório e configure as variáveis de ambiente:
 
 ```
+DATABASE_URL=<string pooled do Neon>
 S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
-S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY   # do token do R2
-S3_FORCE_PATH_STYLE=false                 # R2 usa virtual-host
-NEXT_PUBLIC_MEDIA_URL=https://fotos.seudominio.com
+S3_REGION=auto
+S3_ACCESS_KEY_ID=<token do R2>
+S3_SECRET_ACCESS_KEY=<token do R2>
+S3_BUCKET=casamento-fotos
+S3_FORCE_PATH_STYLE=false
+NEXT_PUBLIC_MEDIA_URL=https://<domínio público do bucket>
+ADMIN_PASSWORD=<senha real>
 ```
 
-No R2, libere CORS para `PUT` a partir do domínio do site — é o mesmo requisito
-que o `MINIO_API_CORS_ALLOW_ORIGIN` cobre localmente. Nenhuma linha de código
-muda.
+`S3_FORCE_PATH_STYLE=false` porque o R2 usa virtual-host; o MinIO local exige
+`true`. `NEXT_PUBLIC_MEDIA_URL` é lida no build, então mudá-la depois exige
+redeploy.
+
+O build roda `prisma generate` pelo `postinstall`, então o client é gerado
+sozinho — `src/generated` não precisa estar versionado.
+
+### 4. Migrar o banco de produção
+
+Da sua máquina, uma vez:
+
+```bash
+DATABASE_URL="<string do Neon>" pnpm prisma migrate deploy
+```
+
+`migrate deploy` só aplica o que já existe em `prisma/migrations`, sem gerar
+migration nova nem pedir confirmação — é o comando certo para produção.
+
+### 5. Conferir no celular
+
+Abra o site num telefone de verdade e faça o caminho completo: nome → papel →
+avatar → **câmera com filtro** → enviar 3 fotos de uma vez → curtir → `/admin`.
+A câmera é o que mais depende do ambiente, e só um aparelho real prova que
+funcionou.
+
+## Testar a câmera antes do deploy
+
+`getUserMedia` exige contexto seguro. Pelo IP da rede local via HTTP o navegador
+bloqueia, então para testar no celular antes de publicar:
+
+```bash
+npx cloudflared tunnel --url http://localhost:3000
+```
+
+Pelo túnel o upload ainda falha, porque o MinIO local só libera CORS para
+`http://localhost:3000`. Para exercitar o fluxo inteiro, troque
+`MINIO_API_CORS_ALLOW_ORIGIN` no `docker-compose.yml` pela URL do túnel e rode
+`docker compose up -d` de novo.
 
 ## Antes do dia
 
 - [ ] Trocar `ADMIN_PASSWORD` por algo real.
-- [ ] Apontar `DATABASE_URL` para um Postgres gerenciado.
-- [ ] Migrar o storage para o R2 conforme acima.
+- [ ] Aplicar a política de CORS do R2 com o domínio final.
+- [ ] Conferir que o bucket responde publicamente em `NEXT_PUBLIC_MEDIA_URL`.
+- [ ] Rodar `prisma migrate deploy` contra o banco de produção.
+- [ ] Percorrer o fluxo inteiro num celular real, incluindo a câmera.
 - [ ] Fixar a tag do `minio/mc` no compose (o `minio` já está fixado).
-- [ ] Servir o site por HTTPS — sem isso a câmera do app não abre no celular.
 
 ## Referência de design
 

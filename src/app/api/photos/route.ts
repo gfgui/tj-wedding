@@ -11,6 +11,14 @@ import { MAX_UPLOAD_BYTES } from "@/lib/upload-constraints";
 
 const FEED_LIMIT = 300;
 
+// O sharp e um binario nativo: esta rota nunca pode cair no runtime Edge.
+export const runtime = "nodejs";
+
+// A finalizacao e a rota mais pesada do app — baixa o original do storage e
+// gera duas versoes. Uma foto de 15MB numa rede ruim estoura com folga o teto
+// padrao de poucos segundos da plataforma, e o convidado veria a foto sumir.
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   const guest = await currentGuest();
   if (!guest)
