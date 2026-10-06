@@ -3,7 +3,7 @@ import { PrismaClient } from "@/generated/prisma/client";
 
 // No Prisma 7 o engine Rust saiu do caminho padrao: a conexao passa por um
 // driver adapter. O schema nao declara url — a CLI le do prisma7.config.ts e o
-// runtime recebe aqui, a partir do .env que o Next carrega sozinho.
+// runtime recebe aqui, a partir do ambiente.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient(): PrismaClient {
@@ -17,8 +17,26 @@ function createClient(): PrismaClient {
   });
 }
 
-// Em dev o hot reload reavalia o modulo a cada edicao; sem o cache global isso
-// abre um pool novo por reload ate o Postgres recusar conexoes.
-export const prisma = globalForPrisma.prisma ?? createClient();
+function getClient(): PrismaClient {
+  // Em dev o hot reload reavalia o modulo a cada edicao; sem o cache global
+  // isso abre um pool novo por reload ate o Postgres recusar conexoes.
+  if (!globalForPrisma.prisma) globalForPrisma.prisma = createClient();
+  return globalForPrisma.prisma;
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+/**
+ * Conexao preguicosa, criada no primeiro uso real.
+ *
+ * `next build` importa cada rota para coletar a configuracao dela. Se o client
+ * nascesse junto com o modulo, o build passaria a exigir DATABASE_URL — um
+ * segredo de runtime — e falharia em qualquer ambiente que so o fornece na hora
+ * de servir, que e o caso de qualquer plataforma de deploy.
+ */
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property) {
+    const client = getClient();
+    const value = Reflect.get(client, property);
+    // Metodos como $transaction perdem o `this` ao sair do Proxy.
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
