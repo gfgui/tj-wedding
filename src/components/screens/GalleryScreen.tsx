@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { PhotoGrid } from "@/components/gallery/PhotoGrid";
 import { MoreLink, SectionDivider } from "@/components/gallery/Section";
+import {
+  RankingListSkeleton,
+  TopPhotosStripSkeleton,
+} from "@/components/gallery/Skeletons";
 import { TopPhotosStrip } from "@/components/gallery/TopPhotosStrip";
 import { UserRankingCard } from "@/components/gallery/UserRankingCard";
 import { MonogramCircle } from "@/components/MonogramCircle";
@@ -139,6 +143,7 @@ export function GalleryScreen({
           <RankingTab
             ranking={ranking}
             topPhotos={topPhotos}
+            loading={loading}
             onSelectTopPhoto={onSelectTopPhoto}
           />
         ) : (
@@ -180,6 +185,44 @@ export function GalleryScreen({
 function RankingTab({
   ranking,
   topPhotos,
+  loading,
+  onSelectTopPhoto,
+}: {
+  ranking: RankingEntryDTO[];
+  topPhotos: PhotoDTO[];
+  loading: boolean;
+  onSelectTopPhoto: (index: number) => void;
+}) {
+  // Enquanto a resposta nao chega, as duas listas estao vazias pelo mesmo
+  // motivo que estariam numa festa sem foto nenhuma. So o esqueleto distingue
+  // os dois casos — e e o primeiro que acontece, toda vez que a aba abre.
+  const carregando = loading && ranking.length === 0 && topPhotos.length === 0;
+
+  return (
+    <div className="px-4 py-5 flex flex-col gap-3">
+      <SectionDivider label="FOTOS MAIS CURTIDAS" />
+
+      {carregando ? (
+        <>
+          <TopPhotosStripSkeleton />
+          <SectionDivider label="QUEM MAIS FOTOGRAFOU" />
+          <RankingListSkeleton />
+          <div className="h-24" />
+        </>
+      ) : (
+        <RankingContent
+          ranking={ranking}
+          topPhotos={topPhotos}
+          onSelectTopPhoto={onSelectTopPhoto}
+        />
+      )}
+    </div>
+  );
+}
+
+function RankingContent({
+  ranking,
+  topPhotos,
   onSelectTopPhoto,
 }: {
   ranking: RankingEntryDTO[];
@@ -187,8 +230,7 @@ function RankingTab({
   onSelectTopPhoto: (index: number) => void;
 }) {
   return (
-    <div className="px-4 py-5 flex flex-col gap-3">
-      <SectionDivider label="FOTOS MAIS CURTIDAS" />
+    <>
       <TopPhotosStrip photos={topPhotos} onSelect={onSelectTopPhoto} />
       {topPhotos.length > 0 && (
         <MoreLink href="/ranking/fotos" label="Ver ranking completo" />
@@ -223,7 +265,7 @@ function RankingTab({
         </>
       )}
       <div className="h-24" />
-    </div>
+    </>
   );
 }
 

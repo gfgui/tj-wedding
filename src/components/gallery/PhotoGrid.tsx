@@ -1,6 +1,7 @@
 "use client";
 
 import { GridTile } from "@/components/gallery/GridTile";
+import { PhotoGridSkeleton } from "@/components/gallery/Skeletons";
 import type { PhotoDTO } from "@/lib/dto";
 import { FONTS, PALETTE } from "@/lib/wedding";
 
@@ -18,6 +19,11 @@ export function PhotoGrid({
   ranked?: boolean;
   emptyTitle?: string;
 }) {
+  // A espera vem antes do vazio: so da para afirmar que nao ha foto nenhuma
+  // depois que a resposta chegou.
+  if (loading && photos.length === 0)
+    return <PhotoGridSkeleton ranked={ranked} />;
+
   if (photos.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
@@ -26,11 +32,7 @@ export function PhotoGrid({
           className="mt-4 text-center px-8"
           style={{ fontFamily: FONTS.display, color: PALETTE.mutedBrown }}
         >
-          {loading ? (
-            "Carregando as memórias..."
-          ) : emptyTitle ? (
-            emptyTitle
-          ) : (
+          {emptyTitle ?? (
             <>
               Nenhuma foto ainda.
               <br />

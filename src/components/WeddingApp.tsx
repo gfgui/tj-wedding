@@ -66,6 +66,17 @@ export function WeddingApp({
   );
   const [ranking, setRanking] = useState<RankingEntryDTO[]>([]);
 
+  const [loadingFeed, setLoadingFeed] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
+
+  // Duas colecoes independentes: o feed da aba e a faixa de mais curtidas do
+  // ranking. Cada uma tem a sua tela cheia, e so uma fica aberta por vez.
+  const feed = usePhotoCollection();
+  const top = usePhotoCollection();
+
+  const setFeedPhotos = feed.setPhotos;
+  const setTopPhotos = top.setPhotos;
+
   /**
    * A aba vive tambem na URL.
    *
@@ -82,13 +93,19 @@ export function WeddingApp({
       next === "all" ? "/" : `/?tab=${next}`,
     );
   }, []);
-  const [loadingFeed, setLoadingFeed] = useState(true);
-  const [feedError, setFeedError] = useState<string | null>(null);
 
-  // Duas colecoes independentes: o feed da aba e a faixa de mais curtidas do
-  // ranking. Cada uma tem a sua tela cheia, e so uma fica aberta por vez.
-  const feed = usePhotoCollection();
-  const top = usePhotoCollection();
+  // Trocar de aba esvazia a lista anterior antes de buscar a nova. Sem isso,
+  // "Minhas" mostraria por um instante as fotos de todo mundo e o Ranking a
+  // classificacao velha — pior que um esqueleto, porque parece informacao certa.
+  useEffect(() => {
+    setLoadingFeed(true);
+    if (tab === "ranking") {
+      setRanking([]);
+      setTopPhotos([]);
+    } else {
+      setFeedPhotos([]);
+    }
+  }, [tab, setFeedPhotos, setTopPhotos]);
 
   const [items, setItems] = useState<QueueItem[]>([]);
   const [batchCaption, setBatchCaption] = useState("");
@@ -107,9 +124,6 @@ export function WeddingApp({
       for (const item of itemsRef.current) releaseQueueItem(item);
     };
   }, []);
-
-  const setFeedPhotos = feed.setPhotos;
-  const setTopPhotos = top.setPhotos;
 
   const refresh = useCallback(
     async (options?: { silent?: boolean }) => {
