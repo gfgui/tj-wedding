@@ -88,6 +88,10 @@ três têm tier gratuito suficiente para um evento de um dia.
 Nenhuma linha de código muda entre local e produção: a camada de storage fala
 S3 puro e tudo o que varia são variáveis de ambiente.
 
+**A ordem abaixo importa.** A migration precisa rodar antes do primeiro deploy,
+senão a primeira visita encontra um banco sem tabelas. E o CORS do R2 só pode
+ser aplicado depois, porque depende do domínio que a Vercel atribui.
+
 ### 1. Banco no Neon
 
 Crie o projeto e copie a connection string **pooled** — a que tem `-pooler` no
@@ -97,20 +101,34 @@ Postgres começa a recusar conexões assim que os convidados chegarem juntos.
 > Se aparecer erro de *prepared statement* nos logs, acrescente
 > `?pgbouncer=true` ao final da URL.
 
-### 2. Bucket no R2
+### 2. Criar as tabelas
+
+Da sua máquina, uma vez, com a string do passo 1:
+
+```bash
+DATABASE_URL="<string do Neon>" pnpm prisma migrate deploy
+```
+
+`migrate deploy` só aplica o que já existe em `prisma/migrations`, sem gerar
+migration nova nem pedir confirmação — é o comando certo para produção. Não
+mexe no seu `.env` local.
+
+### 3. Bucket no R2
 
 1. Crie o bucket (ex.: `casamento-fotos`).
-2. Habilite acesso público — subdomínio `r2.dev` ou um domínio seu. É o valor de
-   `NEXT_PUBLIC_MEDIA_URL`. Bucket do R2 nasce privado: sem esse passo as fotos
-   sobem mas a galeria mostra quadrados quebrados.
-3. Aplique a política de CORS de [`deploy/r2-cors.json`](deploy/r2-cors.json),
-   trocando o domínio. **Sem isso nenhum upload funciona** — veja
-   [`deploy/README.md`](deploy/README.md).
-4. Gere um token de API com leitura e escrita no bucket.
+2. Habilite acesso público — subdomínio `r2.dev` ou um domínio seu. A URL que
+   aparecer é o valor de `NEXT_PUBLIC_MEDIA_URL`. Bucket do R2 nasce privado:
+   sem esse passo as fotos sobem mas a galeria mostra quadrados quebrados.
+3. Gere um token de API com leitura e escrita no bucket. Ele dá o
+   `S3_ACCESS_KEY_ID`, o `S3_SECRET_ACCESS_KEY` e o endpoint com o account id.
 
-### 3. Vercel
+O CORS fica para o passo 5, quando o domínio do site existir.
 
-Importe o repositório e configure as variáveis de ambiente:
+### 4. Vercel
+
+Importe o repositório e configure as variáveis de ambiente **antes do primeiro
+deploy** — `NEXT_PUBLIC_MEDIA_URL` é embutida no bundle durante o build, então
+alterá-la depois exige um redeploy:
 
 ```
 DATABASE_URL=<string pooled do Neon>
@@ -125,24 +143,20 @@ ADMIN_PASSWORD=<senha real>
 ```
 
 `S3_FORCE_PATH_STYLE=false` porque o R2 usa virtual-host; o MinIO local exige
-`true`. `NEXT_PUBLIC_MEDIA_URL` é lida no build, então mudá-la depois exige
-redeploy.
+`true`. O build roda `prisma generate` pelo `postinstall`, então o client é
+gerado sozinho e `src/generated` não precisa estar versionado.
 
-O build roda `prisma generate` pelo `postinstall`, então o client é gerado
-sozinho — `src/generated` não precisa estar versionado.
+Ao final, anote o domínio que a Vercel atribuiu.
 
-### 4. Migrar o banco de produção
+### 5. CORS no R2 (depois do deploy)
 
-Da sua máquina, uma vez:
+Agora que o domínio existe, aplique a política de
+[`deploy/r2-cors.json`](deploy/r2-cors.json) trocando `AllowedOrigins` por ele.
+**Sem isso nenhum upload funciona**: o celular envia a foto direto ao R2 pela
+URL assinada. O [`deploy/README.md`](deploy/README.md) traz um `curl` que
+confirma em um segundo se a regra pegou.
 
-```bash
-DATABASE_URL="<string do Neon>" pnpm prisma migrate deploy
-```
-
-`migrate deploy` só aplica o que já existe em `prisma/migrations`, sem gerar
-migration nova nem pedir confirmação — é o comando certo para produção.
-
-### 5. Conferir no celular
+### 6. Conferir no celular
 
 Abra o site num telefone de verdade e faça o caminho completo: nome → papel →
 avatar → **câmera com filtro** → enviar 3 fotos de uma vez → curtir → `/admin`.
