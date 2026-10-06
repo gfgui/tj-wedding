@@ -1,0 +1,101 @@
+// Schema do site de fotos do casamento Tailany & Jeffson.
+// Sem autenticacao: o convidado informa o nome e recebe um sessionToken em cookie
+// que vale ate o fim da festa.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Papel do convidado na festa. O emoji correspondente fica no front
+/// (src/lib/wedding.ts), aqui guardamos so o valor semantico.
+enum GuestRole {
+  NOIVO
+  NOIVA
+  PADRINHO
+  MADRINHA
+  FAMILIA
+  CONVIDADO
+}
+
+/// Efeito gravado na imagem no momento da captura pela camera do app.
+/// Fica registrado para saber como a foto nasceu — o pixel ja vem filtrado.
+enum PhotoEffect {
+  NONE
+  POLAROID
+}
+
+/// PENDING = URL presigned emitida, upload ainda nao confirmado.
+/// READY   = arquivo no storage, miniatura gerada, aparece na galeria.
+/// HIDDEN  = ocultada pelo painel /admin durante a festa.
+enum PhotoStatus {
+  PENDING
+  READY
+  HIDDEN
+}
+
+model Guest {
+  id           String    @id @default(cuid())
+  name         String    @db.VarChar(60)
+  role         GuestRole
+  avatarId     String    @db.VarChar(8)
+  /// Segredo opaco guardado no cookie httpOnly. E a sessao inteira.
+  sessionToken String    @unique @db.VarChar(64)
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+
+  photos Photo[]
+  likes  Like[]
+
+  @@index([createdAt])
+}
+
+model Photo {
+  id        String      @id @default(cuid())
+  /// Chave do objeto original no bucket (S3/MinIO/R2).
+  objectKey String      @unique @db.VarChar(200)
+  /// Miniatura webp ~600px usada no grid. Nulo enquanto PENDING.
+  thumbKey  String?     @db.VarChar(200)
+  /// Versao webp ~1600px com a rotacao EXIF ja aplicada, usada no lightbox.
+  /// O original fica so como arquivo de alta resolucao para os noivos depois.
+  displayKey String?    @db.VarChar(200)
+  caption   String      @db.VarChar(140)
+  mimeType  String      @db.VarChar(40)
+  sizeBytes Int
+  /// Dimensoes reais lidas do arquivo. Substituem o isPortrait() por regex
+  /// do prototipo e permitem reservar espaco no grid antes da imagem carregar.
+  width     Int
+  height    Int
+  /// Inclinacao do polaroid, sorteada no momento do envio (-3..3 graus).
+  rotation  Int         @default(0)
+  status    PhotoStatus @default(PENDING)
+  effect    PhotoEffect @default(NONE)
+  /// Contador denormalizado: evita COUNT(*) por foto no ranking e na ordenacao.
+  likeCount Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  guestId String
+  guest   Guest  @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  likes Like[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([guestId, createdAt(sort: Desc)])
+}
+
+/// Curtida de um convidado numa foto. Chave composta garante 1 like por pessoa.
+model Like {
+  photoId   String
+  guestId   String
+  createdAt DateTime @default(now())
+
+  photo Photo @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@id([photoId, guestId])
+  @@index([guestId])
+}

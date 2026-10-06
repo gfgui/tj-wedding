@@ -1,26 +1,176 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Tokens do design original (Figma Make). As fontes chegam como CSS variables
+   via next/font no layout, entao nada e baixado do Google Fonts em runtime. */
+@theme {
+  --color-cream: #f9f5ee;
+  --color-cream-dark: #ede7d9;
+  --color-gold: #c4870c;
+  --color-gold-light: #e8b84b;
+  --color-gold-muted: #d4a84b;
+  --color-gold-dark: #8b5e08;
+  --color-warm-brown: #2c1810;
+  --color-muted-brown: #7a6452;
+  --color-polaroid: #ffffff;
+
+  --font-display: var(--font-playfair), Georgia, serif;
+  --font-body: var(--font-lora), Georgia, serif;
+  --font-script: var(--font-dancing), cursive;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
+  margin: 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-cream);
+  font-family: var(--font-body);
+  color: var(--color-warm-brown);
+  -webkit-font-smoothing: antialiased;
+  /* A galeria e uma coluna unica centralizada; rolagem lateral so atrapalha. */
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes heartBurst {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease both;
+}
+.animate-fade-in {
+  animation: fadeIn 0.4s ease both;
+}
+.animate-scale-in {
+  animation: scaleIn 0.35s ease both;
+}
+
+.delay-100 {
+  animation-delay: 0.1s;
+}
+.delay-200 {
+  animation-delay: 0.2s;
+}
+.delay-300 {
+  animation-delay: 0.3s;
+}
+.delay-400 {
+  animation-delay: 0.4s;
+}
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* Quem pediu para reduzir animacoes ve a tela pronta, sem movimento. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-fade-in,
+  .animate-scale-in {
+    animation: none;
+  }
+}
+
+.polaroid-card {
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+  cursor: pointer;
+}
+.polaroid-card:hover {
+  /* biome-ignore lint/complexity/noImportantStyles: o tile tem transform inline
+     (a inclinacao sorteada do polaroid) e estilo inline vence a cascata */
+  transform: translateY(-4px) scale(1.03) !important;
+  box-shadow: 0 16px 40px rgba(44, 24, 16, 0.2);
+}
+
+.texture-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23F9F5EE'/%3E%3Ccircle cx='1' cy='1' r='0.5' fill='%23C4870C' fill-opacity='0.06'/%3E%3Ccircle cx='3' cy='3' r='0.5' fill='%23C4870C' fill-opacity='0.06'/%3E%3C/svg%3E");
+}
+
+.btn-gold {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #c4870c 0%, #e8b84b 50%, #c4870c 100%);
+  background-size: 200% 200%;
+  transition:
+    background-position 0.4s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.btn-gold:hover:not(:disabled) {
+  background-position: right center;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(196, 135, 12, 0.4);
+}
+.btn-gold:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.input-elegant {
+  border-bottom: 1.5px solid #c4870c;
+  background: transparent;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input-elegant:focus {
+  border-bottom-color: #8b5e08;
 }

@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# env example deve ser versionado
+!.env.example
+
+# referencia de design (projeto Figma Make original)
+/design-reference/node_modules
+
+# cliente Prisma gerado (recriado pelo postinstall)
+/src/generated
