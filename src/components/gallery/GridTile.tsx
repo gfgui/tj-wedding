@@ -1,16 +1,20 @@
 "use client";
 
 import type { PhotoDTO } from "@/lib/dto";
-import { FONTS, PALETTE } from "@/lib/wedding";
+import { FONTS, PALETTE, PODIUM_COLORS } from "@/lib/wedding";
 
 export function GridTile({
   photo,
   onOpen,
+  rank,
 }: {
   photo: PhotoDTO;
   onOpen: () => void;
+  /** Posicao no ranking, quando o tile aparece numa lista ordenada. */
+  rank?: number;
 }) {
   const liked = photo.likedByMe;
+  const onPodium = rank !== undefined && rank <= 3;
 
   return (
     <button
@@ -40,6 +44,35 @@ export function GridTile({
         height={photo.height}
         style={{ width: "100%", height: "auto", display: "block" }}
       />
+
+      {rank !== undefined && (
+        <span
+          style={{
+            position: "absolute",
+            top: 9,
+            left: 9,
+            minWidth: 20,
+            height: 20,
+            paddingInline: 3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 10,
+            background: onPodium
+              ? PODIUM_COLORS[rank - 1]
+              : "rgba(44,24,16,0.72)",
+            color: "#FFFFFF",
+            fontFamily: FONTS.display,
+            fontSize: "0.62rem",
+            fontWeight: 700,
+            boxShadow: "0 1px 4px rgba(44,24,16,0.35)",
+          }}
+        >
+          {/* Numero, e nao medalha: num disco de 20px os tres emojis viram a
+              mesma mancha dourada. A cor ja diz quem esta no podio. */}
+          {rank}
+        </span>
+      )}
 
       <div
         style={{

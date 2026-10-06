@@ -1,9 +1,11 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CapturedPhoto } from "@/components/camera/CameraCapture";
 import { CameraCapture } from "@/components/camera/CameraCapture";
 import { FullscreenLightbox } from "@/components/gallery/FullscreenLightbox";
+import { usePhotoCollection } from "@/components/gallery/use-photo-collection";
 import { AddPhotoScreen } from "@/components/screens/AddPhotoScreen";
 import { AvatarScreen } from "@/components/screens/AvatarScreen";
 import { CharacterScreen } from "@/components/screens/CharacterScreen";
@@ -12,13 +14,7 @@ import { GalleryScreen } from "@/components/screens/GalleryScreen";
 import { WelcomeScreen } from "@/components/screens/WelcomeScreen";
 import type { GuestRole } from "@/generated/prisma/enums";
 import { PhotoEffect } from "@/generated/prisma/enums";
-import {
-  fetchPhotos,
-  fetchRanking,
-  saveGuest,
-  toggleLike,
-  uploadPhoto,
-} from "@/lib/api";
+import { fetchPhotos, fetchRanking, saveGuest, uploadPhoto } from "@/lib/api";
 import type { GuestDTO, PhotoDTO, RankingEntryDTO } from "@/lib/dto";
 import {
   ACCEPTED_UPLOAD_MIME,
@@ -42,11 +38,16 @@ function messageOf(error: unknown): string {
     : "Algo deu errado. Tente de novo.";
 }
 
+function parseTab(value: string | null): GalleryTab {
+  return value === "mine" || value === "ranking" ? value : "all";
+}
+
 export function WeddingApp({
   initialGuest,
 }: {
   initialGuest: GuestDTO | null;
 }) {
+  const searchParams = useSearchParams();
   const [guest, setGuest] = useState<GuestDTO | null>(initialGuest);
   const [step, setStep] = useState<Step>(initialGuest ? "gallery" : "welcome");
 
@@ -60,19 +61,34 @@ export function WeddingApp({
   const [savingGuest, setSavingGuest] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<GalleryTab>("all");
-  const [photos, setPhotos] = useState<PhotoDTO[]>([]);
+  const [tab, setTabState] = useState<GalleryTab>(() =>
+    parseTab(searchParams.get("tab")),
+  );
   const [ranking, setRanking] = useState<RankingEntryDTO[]>([]);
+
+  /**
+   * A aba vive tambem na URL.
+   *
+   * `history.replaceState` em vez de `router.replace`: o Next acompanha essa
+   * troca sem ir ao servidor, e com a aba gravada na entrada do historico o
+   * voltar das paginas de ranking — inclusive o botao fisico do Android — cai na
+   * aba de onde o convidado saiu, e nao em "Todas".
+   */
+  const setTab = useCallback((next: GalleryTab) => {
+    setTabState(next);
+    window.history.replaceState(
+      null,
+      "",
+      next === "all" ? "/" : `/?tab=${next}`,
+    );
+  }, []);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  // Espelho das fotos para o handler de curtida ler o valor anterior sem
-  // depender de quando o React executa o updater de estado.
-  const photosRef = useRef<PhotoDTO[]>([]);
-  useEffect(() => {
-    photosRef.current = photos;
-  }, [photos]);
+  // Duas colecoes independentes: o feed da aba e a faixa de mais curtidas do
+  // ranking. Cada uma tem a sua tela cheia, e so uma fica aberta por vez.
+  const feed = usePhotoCollection();
+  const top = usePhotoCollection();
 
   const [items, setItems] = useState<QueueItem[]>([]);
   const [batchCaption, setBatchCaption] = useState("");
@@ -92,14 +108,19 @@ export function WeddingApp({
     };
   }, []);
 
+  const setFeedPhotos = feed.setPhotos;
+  const setTopPhotos = top.setPhotos;
+
   const refresh = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!options?.silent) setLoadingFeed(true);
       try {
         if (tab === "ranking") {
-          setRanking(await fetchRanking());
+          const result = await fetchRanking();
+          setRanking(result.ranking);
+          setTopPhotos(result.topPhotos);
         } else {
-          setPhotos(await fetchPhotos(tab));
+          setFeedPhotos(await fetchPhotos(tab));
         }
         setFeedError(null);
       } catch (error) {
@@ -108,7 +129,7 @@ export function WeddingApp({
         setLoadingFeed(false);
       }
     },
-    [tab],
+    [tab, setFeedPhotos, setTopPhotos],
   );
 
   // Polling: so enquanto a galeria esta aberta e a aba visivel. Num salao cheio
@@ -139,31 +160,6 @@ export function WeddingApp({
       setSavingGuest(false);
     }
   }
-
-  /** Curtida otimista: o coracao responde na hora e o servidor corrige depois. */
-  const handleLike = useCallback(async (photoId: string) => {
-    const before = photosRef.current.find((photo) => photo.id === photoId);
-    if (!before) return;
-
-    const patch = (values: Pick<PhotoDTO, "likedByMe" | "likes">) =>
-      setPhotos((current) =>
-        current.map((photo) =>
-          photo.id === photoId ? { ...photo, ...values } : photo,
-        ),
-      );
-
-    patch({
-      likedByMe: !before.likedByMe,
-      likes: Math.max(0, before.likes + (before.likedByMe ? -1 : 1)),
-    });
-
-    try {
-      const result = await toggleLike(photoId);
-      patch({ likedByMe: result.liked, likes: result.likes });
-    } catch {
-      patch({ likedByMe: before.likedByMe, likes: before.likes });
-    }
-  }, []);
 
   function updateItem(id: string, values: Partial<QueueItem>) {
     setItems((current) =>
@@ -259,7 +255,7 @@ export function WeddingApp({
     if (published.length > 0) {
       // O feed vem do mais novo para o mais antigo; invertendo o lote a ordem
       // de escolha do convidado e preservada no topo da galeria.
-      setPhotos((current) => [...published.reverse(), ...current]);
+      setFeedPhotos((current) => [...published.reverse(), ...current]);
     }
 
     setUploading(false);
@@ -318,14 +314,16 @@ export function WeddingApp({
       {step === "gallery" && guest && (
         <GalleryScreen
           guest={guest}
-          photos={photos}
+          photos={feed.photos}
           ranking={ranking}
+          topPhotos={top.photos}
           tab={tab}
           setTab={setTab}
           loading={loadingFeed}
           error={feedError}
           onAdd={() => setStep("add-photo")}
-          onSelect={setLightboxIndex}
+          onSelect={feed.open}
+          onSelectTopPhoto={top.open}
         />
       )}
 
@@ -355,12 +353,21 @@ export function WeddingApp({
         />
       )}
 
-      {lightboxIndex !== null && photos.length > 0 && (
+      {feed.openIndex !== null && feed.photos.length > 0 && (
         <FullscreenLightbox
-          photos={photos}
-          initialIndex={lightboxIndex}
-          onLike={handleLike}
-          onClose={() => setLightboxIndex(null)}
+          photos={feed.photos}
+          initialIndex={feed.openIndex}
+          onLike={feed.like}
+          onClose={feed.close}
+        />
+      )}
+
+      {top.openIndex !== null && top.photos.length > 0 && (
+        <FullscreenLightbox
+          photos={top.photos}
+          initialIndex={top.openIndex}
+          onLike={top.like}
+          onClose={top.close}
         />
       )}
     </div>

@@ -1,8 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { PhotoDTO } from "@/lib/dto";
 import { FONTS, PALETTE } from "@/lib/wedding";
+
+/**
+ * Quantas vizinhas de cada lado ja entram no DOM com `src` definido.
+ *
+ * Com `scroll-snap-stop: always` o dedo nunca passa de uma foto por gesto, logo
+ * duas de folga bastam. Renderizar todas faria uma galeria de 300 fotos disparar
+ * 300 downloads de ~1600px no instante em que a tela cheia abre.
+ */
+const PRELOAD_RADIUS = 2;
+
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
 
 export function FullscreenLightbox({
   photos,
@@ -15,43 +37,140 @@ export function FullscreenLightbox({
   onLike: (photoId: string) => void;
   onClose: () => void;
 }) {
+  const trackRef = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(initialIndex);
   const [burst, setBurst] = useState(false);
   const lastTap = useRef(0);
-  const touchStartX = useRef(0);
 
-  // A lista e recarregada a cada 10s; se a foto aberta sumir (moderada, por
-  // exemplo) o indice precisa recuar em vez de estourar.
-  const safeIndex = Math.min(index, photos.length - 1);
-  const photo = photos[safeIndex];
+  // O indice tambem vive num ref: o listener de scroll e o reposicionamento
+  // precisam do valor atual sem entrar na lista de dependencias dos effects.
+  const indexRef = useRef(initialIndex);
+  const photosRef = useRef(photos);
 
-  const prev = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+  // Ancora de identidade: o que importa e a foto, nao a posicao dela. O feed e
+  // recarregado a cada 10s e uma publicacao de outro convidado desloca o array
+  // inteiro — sem isto, a foto na tela trocaria sozinha debaixo do dedo.
+  const anchorRef = useRef<string | undefined>(photos[initialIndex]?.id);
+
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+
+  const jumpTo = useCallback((target: number, smooth: boolean) => {
+    const track = trackRef.current;
+    if (!track) return;
+    indexRef.current = target;
+    anchorRef.current = photosRef.current[target]?.id;
+    setIndex(target);
+    track.scrollTo({
+      left: target * track.clientWidth,
+      behavior: smooth ? scrollBehavior() : "auto",
+    });
+  }, []);
+
+  // Abre direto na foto tocada, sem animar desde a primeira.
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (track) track.scrollLeft = initialIndex * track.clientWidth;
+  }, [initialIndex]);
+
+  // O scroll e a fonte da verdade da posicao: o contador anda junto com o dedo.
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    function onScroll() {
+      const width = track?.clientWidth ?? 0;
+      if (!track || width === 0) return;
+      const next = Math.round(track.scrollLeft / width);
+      if (next === indexRef.current) return;
+      indexRef.current = next;
+      anchorRef.current = photosRef.current[next]?.id;
+      setIndex(next);
+    }
+
+    track.addEventListener("scroll", onScroll, { passive: true });
+    return () => track.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Realinha a foto em foco quando o array muda (polling, moderacao, publicacao).
+  useEffect(() => {
+    photosRef.current = photos;
+
+    if (photos.length === 0) {
+      closeRef.current();
+      return;
+    }
+
+    const anchor = anchorRef.current;
+    const target = anchor ? photos.findIndex((p) => p.id === anchor) : -1;
+
+    if (target === -1) {
+      // A foto em foco saiu da lista — moderada, por exemplo. Fica no vizinho
+      // mais proximo em vez de fechar a tela na cara do convidado.
+      jumpTo(Math.min(indexRef.current, photos.length - 1), false);
+      return;
+    }
+    if (target !== indexRef.current) jumpTo(target, false);
+  }, [photos, jumpTo]);
+
+  /**
+   * Fechar sempre passa pelo historico.
+   *
+   * A entrada sintetica abaixo existe para o botao voltar do Android fechar a
+   * foto em vez de tirar o convidado do app. Mandando o X e o Escape por
+   * `history.back()`, os dois caminhos convergem no mesmo listener e a pilha de
+   * historico nunca fica com uma entrada orfa.
+   */
+  const close = useCallback(() => window.history.back(), []);
+
+  useEffect(() => {
+    window.history.pushState({ lightbox: true }, "");
+    const onPop = () => closeRef.current();
+    window.addEventListener("popstate", onPop);
+    // Sem `history.back()` na limpeza: se o convidado sair por um link (a
+    // galeria do autor), desfazer a navegacao o traria de volta na hora.
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const prev = useCallback(
+    () => jumpTo(Math.max(0, indexRef.current - 1), true),
+    [jumpTo],
+  );
   const next = useCallback(
-    () => setIndex((i) => Math.min(photos.length - 1, i + 1)),
-    [photos.length],
+    () =>
+      jumpTo(
+        Math.min(photosRef.current.length - 1, indexRef.current + 1),
+        true,
+      ),
+    [jumpTo],
   );
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close();
       if (event.key === "ArrowLeft") prev();
       if (event.key === "ArrowRight") next();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, prev, next]);
+  }, [close, prev, next]);
+
+  const safeIndex = Math.min(Math.max(index, 0), photos.length - 1);
+  const photo = photos[safeIndex];
 
   const triggerBurst = useCallback(() => {
     setBurst(true);
-    const timer = setTimeout(() => setBurst(false), 700);
-    return () => clearTimeout(timer);
+    setTimeout(() => setBurst(false), 700);
   }, []);
 
   const handleDoubleTap = useCallback(() => {
-    if (!photo) return;
-    if (!photo.likedByMe) onLike(photo.id);
+    const current = photosRef.current[indexRef.current];
+    if (!current) return;
+    if (!current.likedByMe) onLike(current.id);
     triggerBurst();
-  }, [photo, onLike, triggerBurst]);
+  }, [onLike, triggerBurst]);
 
   const handleTap = useCallback(() => {
     const now = Date.now();
@@ -62,6 +181,7 @@ export function FullscreenLightbox({
   if (!photo) return null;
 
   const liked = photo.likedByMe;
+  const progress = ((safeIndex + 1) / photos.length) * 100;
 
   return (
     <div
@@ -70,6 +190,9 @@ export function FullscreenLightbox({
         position: "fixed",
         inset: 0,
         zIndex: 50,
+        // dvh e nao vh: no iOS o vh conta a barra de endereco que colapsa, e a
+        // tela cheia ficava com uma faixa morta embaixo.
+        height: "100dvh",
         background: "rgba(20,12,8,0.96)",
         display: "flex",
         flexDirection: "column",
@@ -80,12 +203,14 @@ export function FullscreenLightbox({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "52px 20px 12px",
+          padding: "0 20px 12px",
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 18px)",
+          flexShrink: 0,
         }}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={close}
           aria-label="Fechar"
           style={{
             color: "rgba(249,245,238,0.7)",
@@ -158,108 +283,23 @@ export function FullscreenLightbox({
         </button>
       </div>
 
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: area de gesto (toque duplo e swipe); as acoes equivalentes estao nos botoes acima */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: teclado tratado no listener global de setas/Escape */}
-      <div
-        style={{
-          flex: 1,
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-        onTouchStart={(event) => {
-          touchStartX.current = event.touches[0].clientX;
-        }}
-        onTouchEnd={(event) => {
-          const dx = event.changedTouches[0].clientX - touchStartX.current;
-          if (Math.abs(dx) > 50) {
-            if (dx < 0) next();
-            else prev();
-          }
-        }}
-        onClick={handleTap}
-        onDoubleClick={handleDoubleTap}
-      >
+      <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: area de gesto (toque duplo para curtir); a acao equivalente esta no botao do cabecalho */}
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: teclado tratado no listener global de setas e Escape */}
         <div
-          className="animate-scale-in"
-          style={{
-            background: PALETTE.polaroid,
-            padding: "10px 10px 48px",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-            maxWidth: "90vw",
-            width: "100%",
-          }}
+          ref={trackRef}
+          className="swipe-track"
+          style={{ height: "100%" }}
+          onClick={handleTap}
+          onDoubleClick={handleDoubleTap}
         >
-          {/** biome-ignore lint/performance/noImgElement: versao de exibicao ja redimensionada no servidor */}
-          <img
-            src={photo.url}
-            alt={photo.caption || `Foto de ${photo.author}`}
-            draggable={false}
-            width={photo.width}
-            height={photo.height}
-            style={{
-              width: "100%",
-              height: "auto",
-              display: "block",
-              maxHeight: "60vh",
-              objectFit: "contain",
-            }}
-          />
-          <div style={{ marginTop: 8, textAlign: "center" }}>
-            <p
-              style={{
-                fontFamily: FONTS.script,
-                fontSize: "1.1rem",
-                color: PALETTE.brown,
-              }}
-            >
-              {photo.caption}
-            </p>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                marginTop: 4,
-              }}
-            >
-              {photo.avatarSrc && (
-                <div
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    border: "1.5px solid rgba(196,135,12,0.4)",
-                    background: "#fff",
-                    flexShrink: 0,
-                  }}
-                >
-                  {/** biome-ignore lint/performance/noImgElement: avatar SVG remoto */}
-                  <img
-                    src={photo.avatarSrc}
-                    alt=""
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                </div>
+          {photos.map((item, i) => (
+            <div key={item.id} className="swipe-slide">
+              {Math.abs(i - safeIndex) <= PRELOAD_RADIUS && (
+                <Slide photo={item} />
               )}
-              <p
-                style={{
-                  fontFamily: FONTS.body,
-                  fontSize: "0.65rem",
-                  color: PALETTE.mutedBrown,
-                }}
-              >
-                {photo.emoji} {photo.author}
-              </p>
             </div>
-          </div>
+          ))}
         </div>
 
         {burst && (
@@ -292,11 +332,9 @@ export function FullscreenLightbox({
         {safeIndex > 0 && (
           <button
             type="button"
+            className="lightbox-arrow"
             aria-label="Foto anterior"
-            onClick={(event) => {
-              event.stopPropagation();
-              prev();
-            }}
+            onClick={prev}
             style={{
               position: "absolute",
               left: 8,
@@ -330,11 +368,9 @@ export function FullscreenLightbox({
         {safeIndex < photos.length - 1 && (
           <button
             type="button"
+            className="lightbox-arrow"
             aria-label="Próxima foto"
-            onClick={(event) => {
-              event.stopPropagation();
-              next();
-            }}
+            onClick={next}
             style={{
               position: "absolute",
               right: 8,
@@ -366,32 +402,118 @@ export function FullscreenLightbox({
         )}
       </div>
 
+      {/* Barra no lugar da tira de bolinhas: 300 fotos nao cabem em pontinhos
+          numa tela de 375px, e o numero exato ja esta no cabecalho. */}
       <div
         style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: 6,
-          padding: "16px 0 40px",
+          flexShrink: 0,
+          padding: "14px 32px",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 18px)",
         }}
       >
-        {photos.slice(0, 40).map((item, i) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-label={`Ir para a foto ${i + 1}`}
-            onClick={() => setIndex(i)}
+        <div
+          style={{
+            height: 2,
+            borderRadius: 2,
+            background: "rgba(249,245,238,0.15)",
+            overflow: "hidden",
+          }}
+        >
+          <div
             style={{
-              width: i === safeIndex ? 18 : 6,
-              height: 6,
-              borderRadius: 3,
-              background:
-                i === safeIndex ? PALETTE.gold : "rgba(249,245,238,0.25)",
-              border: "none",
-              padding: 0,
-              transition: "all 0.2s",
+              height: "100%",
+              width: `${progress}%`,
+              background: PALETTE.gold,
+              transition: "width 0.2s ease",
             }}
           />
-        ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Slide({ photo }: { photo: PhotoDTO }) {
+  return (
+    <div
+      style={{
+        background: PALETTE.polaroid,
+        padding: "10px 10px 20px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+        maxWidth: "min(90vw, 430px)",
+        width: "100%",
+      }}
+    >
+      {/** biome-ignore lint/performance/noImgElement: versao de exibicao ja redimensionada no servidor */}
+      <img
+        src={photo.url}
+        alt={photo.caption || `Foto de ${photo.author}`}
+        draggable={false}
+        width={photo.width}
+        height={photo.height}
+        style={{
+          width: "100%",
+          height: "auto",
+          display: "block",
+          maxHeight: "62dvh",
+          objectFit: "contain",
+        }}
+      />
+      <div style={{ marginTop: 8, textAlign: "center" }}>
+        <p
+          style={{
+            fontFamily: FONTS.script,
+            fontSize: "1.1rem",
+            color: PALETTE.brown,
+          }}
+        >
+          {photo.caption}
+        </p>
+        <Link
+          href={`/convidado/${photo.guestId}`}
+          // O container e area de gesto: sem isto, abrir a galeria do autor
+          // tambem contaria como metade de um toque duplo.
+          onClick={(event) => event.stopPropagation()}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+            marginTop: 4,
+            textDecoration: "none",
+          }}
+        >
+          {photo.avatarSrc && (
+            <span
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                overflow: "hidden",
+                border: "1.5px solid rgba(196,135,12,0.4)",
+                background: "#fff",
+                flexShrink: 0,
+              }}
+            >
+              {/** biome-ignore lint/performance/noImgElement: avatar SVG remoto */}
+              <img
+                src={photo.avatarSrc}
+                alt=""
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </span>
+          )}
+          <span
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: "0.65rem",
+              color: PALETTE.gold,
+              borderBottom: "1px solid rgba(196,135,12,0.35)",
+            }}
+          >
+            {photo.emoji} {photo.author}
+          </span>
+        </Link>
       </div>
     </div>
   );

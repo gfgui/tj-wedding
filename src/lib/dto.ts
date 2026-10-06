@@ -18,6 +18,7 @@ export interface PhotoDTO {
   url: string;
   thumbUrl: string;
   caption: string;
+  guestId: string;
   author: string;
   emoji: string;
   avatarSrc?: string;
@@ -41,6 +42,13 @@ export interface RankingEntryDTO {
 
 export interface PhotoFeedResponse {
   photos: PhotoDTO[];
+}
+
+export interface RankingResponse {
+  /** Quem mais fotografou. */
+  ranking: RankingEntryDTO[];
+  /** As fotos mais curtidas, da mais para a menos curtida. */
+  topPhotos: PhotoDTO[];
 }
 
 export interface UploadTicketResponse {

@@ -129,6 +129,48 @@ body {
   }
 }
 
+/* Carrossel horizontal com snap do proprio navegador.
+
+   Inercia, rubber-band e assentamento do iOS rodam no compositor, fora da main
+   thread. Um arraste conduzido por `touchmove` em JS disputaria quadro a quadro
+   com o React e nunca ficaria tao macio num celular com 300 fotos na memoria. */
+.swipe-track {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  /* Sem isto, arrastar da borda esquerda na primeira foto dispara o "voltar"
+     por gesto do iOS e o convidado sai do app no meio do swipe. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.swipe-track::-webkit-scrollbar {
+  display: none;
+}
+
+.swipe-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  /* Um flique forte anda uma foto, nao cinco — e assim o dedo nunca passa na
+     frente da janela de vizinhas ja carregadas. */
+  scroll-snap-stop: always;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* No celular o gesto e o swipe; as setas so cobririam a foto. O teclado
+   continua atendido pelo listener de setas e Escape. */
+.lightbox-arrow {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lightbox-arrow {
+    display: flex;
+  }
+}
+
 .polaroid-card {
   transition:
     transform 0.25s ease,

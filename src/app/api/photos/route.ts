@@ -5,6 +5,7 @@ import type { PhotoFeedResponse } from "@/lib/dto";
 import { buildDerivatives } from "@/lib/images";
 import { toPhotoDTO } from "@/lib/mappers";
 import { prisma } from "@/lib/prisma";
+import { attachViewerLikes } from "@/lib/ranking";
 import { currentGuest } from "@/lib/session";
 import { deleteObjects, getObjectBuffer, putObject } from "@/lib/storage";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload-constraints";
@@ -36,14 +37,8 @@ export async function GET(request: Request) {
     take: FEED_LIMIT,
   });
 
-  const likes = await prisma.like.findMany({
-    where: { guestId: guest.id, photoId: { in: photos.map((p) => p.id) } },
-    select: { photoId: true },
-  });
-  const likedIds = new Set(likes.map((l) => l.photoId));
-
   const body: PhotoFeedResponse = {
-    photos: photos.map((photo) => toPhotoDTO(photo, guest.id, likedIds)),
+    photos: await attachViewerLikes(photos, guest.id),
   };
   return NextResponse.json(body, { headers: { "Cache-Control": "no-store" } });
 }

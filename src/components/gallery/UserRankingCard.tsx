@@ -1,10 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import type { RankingEntryDTO } from "@/lib/dto";
-import { FONTS, PALETTE } from "@/lib/wedding";
-
-const MEDALS = ["🥇", "🥈", "🥉"];
-const PODIUM_COLORS = [PALETTE.gold, PALETTE.silver, PALETTE.bronze];
+import { FONTS, MEDALS, PALETTE, PODIUM_COLORS } from "@/lib/wedding";
 
 export function UserRankingCard({
   entry,
@@ -17,7 +15,8 @@ export function UserRankingCard({
   const thumbnail = entry.avatarSrc ?? entry.thumbUrl;
 
   return (
-    <div
+    <Link
+      href={`/convidado/${entry.guestId}`}
       className="animate-fade-in-up flex items-center gap-4"
       style={{
         background: PALETTE.polaroid,
@@ -31,6 +30,7 @@ export function UserRankingCard({
             ? "1px solid rgba(196,135,12,0.3)"
             : "1px solid rgba(196,135,12,0.1)",
         animationDelay: `${rank * 0.06}s`,
+        textDecoration: "none",
       }}
     >
       <div
@@ -92,30 +92,20 @@ export function UserRankingCard({
         </p>
       </div>
 
-      <div
-        className="flex-shrink-0 flex items-center justify-center"
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          background: rank === 1 ? "rgba(196,135,12,0.1)" : PALETTE.cream,
-          border:
-            rank === 1
-              ? "1px solid rgba(196,135,12,0.3)"
-              : "1px solid rgba(196,135,12,0.15)",
-        }}
+      {/* O numero ja aparece na linha de cima; aqui vale mais a seta, que e o
+          unico sinal de que o cartao leva para a galeria do convidado. */}
+      <svg
+        className="flex-shrink-0"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke={rank === 1 ? PALETTE.gold : PALETTE.mutedBrown}
+        strokeWidth="1.5"
+        aria-hidden="true"
       >
-        <span
-          style={{
-            fontFamily: FONTS.display,
-            fontWeight: 700,
-            fontSize: "0.9rem",
-            color: rank === 1 ? PALETTE.gold : PALETTE.mutedBrown,
-          }}
-        >
-          {entry.count}
-        </span>
-      </div>
-    </div>
+        <path d="M6 3l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </Link>
   );
 }

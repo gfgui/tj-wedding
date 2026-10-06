@@ -3,7 +3,7 @@ import type {
   GuestDTO,
   PhotoDTO,
   PhotoFeedResponse,
-  RankingEntryDTO,
+  RankingResponse,
   UploadTicketResponse,
 } from "./dto";
 
@@ -37,9 +37,9 @@ export async function fetchPhotos(scope: "all" | "mine"): Promise<PhotoDTO[]> {
   return (await unwrap<PhotoFeedResponse>(res)).photos;
 }
 
-export async function fetchRanking(): Promise<RankingEntryDTO[]> {
+export async function fetchRanking(): Promise<RankingResponse> {
   const res = await fetch("/api/ranking", { cache: "no-store" });
-  return (await unwrap<{ ranking: RankingEntryDTO[] }>(res)).ranking;
+  return unwrap<RankingResponse>(res);
 }
 
 export async function toggleLike(

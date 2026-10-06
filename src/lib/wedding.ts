@@ -20,6 +20,14 @@ export const PALETTE = {
   bronze: "#A67C5B",
 } as const;
 
+/** Insignias das tres primeiras posicoes, em qualquer ranking do app. */
+export const MEDALS = ["🥇", "🥈", "🥉"] as const;
+export const PODIUM_COLORS = [
+  PALETTE.gold,
+  PALETTE.silver,
+  PALETTE.bronze,
+] as const;
+
 export const FONTS = {
   display: "var(--font-playfair), Georgia, serif",
   body: "var(--font-lora), Georgia, serif",

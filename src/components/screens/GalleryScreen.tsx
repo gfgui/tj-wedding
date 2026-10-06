@@ -1,10 +1,13 @@
 "use client";
 
-import { GridTile } from "@/components/gallery/GridTile";
+import Link from "next/link";
+import { PhotoGrid } from "@/components/gallery/PhotoGrid";
+import { MoreLink, SectionDivider } from "@/components/gallery/Section";
+import { TopPhotosStrip } from "@/components/gallery/TopPhotosStrip";
 import { UserRankingCard } from "@/components/gallery/UserRankingCard";
 import { MonogramCircle } from "@/components/MonogramCircle";
 import type { GuestDTO, PhotoDTO, RankingEntryDTO } from "@/lib/dto";
-import { FONTS, PALETTE } from "@/lib/wedding";
+import { FONTS, MEDALS, PALETTE, PODIUM_COLORS } from "@/lib/wedding";
 
 export type GalleryTab = "all" | "mine" | "ranking";
 
@@ -18,22 +21,26 @@ export function GalleryScreen({
   guest,
   photos,
   ranking,
+  topPhotos,
   tab,
   setTab,
   loading,
   error,
   onAdd,
   onSelect,
+  onSelectTopPhoto,
 }: {
   guest: GuestDTO;
   photos: PhotoDTO[];
   ranking: RankingEntryDTO[];
+  topPhotos: PhotoDTO[];
   tab: GalleryTab;
   setTab: (tab: GalleryTab) => void;
   loading: boolean;
   error: string | null;
   onAdd: () => void;
   onSelect: (index: number) => void;
+  onSelectTopPhoto: (index: number) => void;
 }) {
   return (
     <div
@@ -129,7 +136,11 @@ export function GalleryScreen({
 
       <div className="flex-1">
         {tab === "ranking" ? (
-          <RankingTab ranking={ranking} />
+          <RankingTab
+            ranking={ranking}
+            topPhotos={topPhotos}
+            onSelectTopPhoto={onSelectTopPhoto}
+          />
         ) : (
           <PhotoGrid photos={photos} loading={loading} onSelect={onSelect} />
         )}
@@ -166,83 +177,26 @@ export function GalleryScreen({
   );
 }
 
-function PhotoGrid({
-  photos,
-  loading,
-  onSelect,
+function RankingTab({
+  ranking,
+  topPhotos,
+  onSelectTopPhoto,
 }: {
-  photos: PhotoDTO[];
-  loading: boolean;
-  onSelect: (index: number) => void;
+  ranking: RankingEntryDTO[];
+  topPhotos: PhotoDTO[];
+  onSelectTopPhoto: (index: number) => void;
 }) {
-  if (photos.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-        <span style={{ fontSize: "3rem" }}>📷</span>
-        <p
-          className="mt-4 text-center"
-          style={{ fontFamily: FONTS.display, color: PALETTE.mutedBrown }}
-        >
-          {loading ? (
-            "Carregando as memórias..."
-          ) : (
-            <>
-              Nenhuma foto ainda.
-              <br />
-              Seja o primeiro!
-            </>
-          )}
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: "12px 12px 100px" }}>
-      <div style={{ columns: 3, columnGap: 10 }}>
-        {photos.map((photo, index) => (
-          <div
-            key={photo.id}
-            className="animate-fade-in-up"
-            style={{
-              breakInside: "avoid",
-              marginBottom: 10,
-              // So as primeiras recebem atraso: com 200 fotos a cascata
-              // deixaria as ultimas invisiveis por dezenas de segundos.
-              animationDelay: index < 12 ? `${index * 0.05}s` : "0s",
-            }}
-          >
-            <GridTile photo={photo} onOpen={() => onSelect(index)} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RankingTab({ ranking }: { ranking: RankingEntryDTO[] }) {
   return (
     <div className="px-4 py-5 flex flex-col gap-3">
+      <SectionDivider label="FOTOS MAIS CURTIDAS" />
+      <TopPhotosStrip photos={topPhotos} onSelect={onSelectTopPhoto} />
+      {topPhotos.length > 0 && (
+        <MoreLink href="/ranking/fotos" label="Ver ranking completo" />
+      )}
+
       {ranking.length >= 3 && <Podium ranking={ranking} />}
 
-      <div className="flex items-center gap-3 mb-1">
-        <div
-          style={{ flex: 1, height: 1, background: PALETTE.gold, opacity: 0.3 }}
-        />
-        <span
-          style={{
-            fontFamily: FONTS.display,
-            fontSize: "0.72rem",
-            color: PALETTE.gold,
-            letterSpacing: "0.12em",
-          }}
-        >
-          QUEM MAIS FOTOGRAFOU
-        </span>
-        <div
-          style={{ flex: 1, height: 1, background: PALETTE.gold, opacity: 0.3 }}
-        />
-      </div>
+      <SectionDivider label="QUEM MAIS FOTOGRAFOU" />
 
       {ranking.length === 0 ? (
         <div className="flex flex-col items-center py-16 animate-fade-in">
@@ -257,9 +211,16 @@ function RankingTab({ ranking }: { ranking: RankingEntryDTO[] }) {
           </p>
         </div>
       ) : (
-        ranking.map((entry, index) => (
-          <UserRankingCard key={entry.guestId} entry={entry} rank={index + 1} />
-        ))
+        <>
+          {ranking.map((entry, index) => (
+            <UserRankingCard
+              key={entry.guestId}
+              entry={entry}
+              rank={index + 1}
+            />
+          ))}
+          <MoreLink href="/ranking/convidados" label="Ver todos" />
+        </>
       )}
       <div className="h-24" />
     </div>
@@ -268,46 +229,29 @@ function RankingTab({ ranking }: { ranking: RankingEntryDTO[] }) {
 
 function Podium({ ranking }: { ranking: RankingEntryDTO[] }) {
   const places = [
-    {
-      entry: ranking[1],
-      size: 60,
-      medal: "🥈",
-      color: PALETTE.silver,
-      offset: 0,
-    },
-    {
-      entry: ranking[0],
-      size: 80,
-      medal: "🥇",
-      color: PALETTE.gold,
-      offset: 12,
-    },
-    {
-      entry: ranking[2],
-      size: 52,
-      medal: "🥉",
-      color: PALETTE.bronze,
-      offset: 0,
-    },
+    { entry: ranking[1], size: 60, rank: 2, offset: 0 },
+    { entry: ranking[0], size: 80, rank: 1, offset: 12 },
+    { entry: ranking[2], size: 52, rank: 3, offset: 0 },
   ];
 
   return (
-    <div className="flex items-end justify-center gap-4 mb-5 animate-fade-in">
+    <div className="flex items-end justify-center gap-4 my-4 animate-fade-in">
       {places.map((place) => (
-        <div
+        <Link
           key={place.entry.guestId}
+          href={`/convidado/${place.entry.guestId}`}
           className="flex flex-col items-center gap-1"
-          style={{ marginBottom: place.offset }}
+          style={{ marginBottom: place.offset, textDecoration: "none" }}
         >
           <div
             style={{
               width: place.size,
               height: place.size,
               overflow: "hidden",
-              border: `${place.medal === "🥇" ? 2.5 : 2}px solid ${place.color}`,
+              border: `${place.rank === 1 ? 2.5 : 2}px solid ${PODIUM_COLORS[place.rank - 1]}`,
               borderRadius: "50%",
               boxShadow:
-                place.medal === "🥇"
+                place.rank === 1
                   ? "0 4px 16px rgba(196,135,12,0.35)"
                   : undefined,
               background: "#fff",
@@ -322,10 +266,8 @@ function Podium({ ranking }: { ranking: RankingEntryDTO[] }) {
               />
             )}
           </div>
-          <span
-            style={{ fontSize: place.medal === "🥇" ? "1.7rem" : "1.2rem" }}
-          >
-            {place.medal}
+          <span style={{ fontSize: place.rank === 1 ? "1.7rem" : "1.2rem" }}>
+            {MEDALS[place.rank - 1]}
           </span>
           <p
             style={{
@@ -341,13 +283,13 @@ function Podium({ ranking }: { ranking: RankingEntryDTO[] }) {
             style={{
               fontFamily: FONTS.display,
               fontSize: "0.72rem",
-              color: place.color,
+              color: PODIUM_COLORS[place.rank - 1],
               fontWeight: 700,
             }}
           >
             {place.entry.count} 📷
           </p>
-        </div>
+        </Link>
       ))}
     </div>
   );

@@ -27,6 +27,7 @@ export function toPhotoDTO(
     // Antes da miniatura existir, o original segura o lugar dela.
     thumbUrl: publicUrl(photo.thumbKey ?? photo.objectKey),
     caption: photo.caption,
+    guestId: photo.guestId,
     author: photo.guest.name,
     emoji: emojiForRole(photo.guest.role),
     avatarSrc: avatarSrc(photo.guest.avatarId),
